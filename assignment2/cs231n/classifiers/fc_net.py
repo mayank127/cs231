@@ -183,7 +183,14 @@ class FullyConnectedNet(object):
         for i,h in enumerate(hidden_dims):
             self.params['W'+str(i+1)] = np.random.normal(0.0, weight_scale, (prev, h))
             self.params['b'+str(i+1)] = np.zeros(h)
+            if self.normalization=='batchnorm' or self.normalization=='layernorm':
+                self.params['gamma'+str(i+1)] = np.ones(h)
+                self.params['beta' + str(i+1)] = np.zeros(h)
             prev = h
+        
+        self.params['W'+str(self.num_layers)] = np.random.normal(0.0, weight_scale, (prev,num_classes))
+        self.params['b'+str(self.num_layers)] = np.zeros(num_classes)
+        
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -243,11 +250,30 @@ class FullyConnectedNet(object):
         # layer, etc.                                                              #
         ############################################################################
         prev_layer = X
-        cache = {}
+        cache = []
+        L2reg = 0
         for i in range(1, self.num_layers):
-            prev_layer, cache[i] = affine_relu_forward(prev_layer, self.params['W'+str(i)],self.params['b'+str(i)])
+            if self.normalization=='batchnorm' or self.normalization=='layernorm':
+                prev_layer, c = affine_bn_relu_forward(prev_layer, 
+                                                              self.params['W'+str(i)],
+                                                              self.params['b'+str(i)],
+                                                              self.normalization,
+                                                              self.params['gamma'+str(i)],
+                                                              self.params['beta'+str(i)],
+                                                              self.bn_params[i-1])
+            else:
+                prev_layer, c = affine_relu_forward(prev_layer, self.params['W'+str(i)],self.params['b'+str(i)])
+            cache.append(c)
+            L2reg += np.sum(self.params['W'+str(i)]**2)
+            if self.use_dropout:
+                prev_layer, c = dropout_forward(prev_layer, self.dropout_param)
+                cache.append(c)
         
-        scores = prev_layer
+        N = self.num_layers
+        scores, c = affine_forward(prev_layer, self.params['W'+str(N)],self.params['b'+str(N)])
+        cache.append(c)
+        L2reg += np.sum(self.params['W'+str(N)]**2)
+        L2reg *= 0.5 * self.reg
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -271,10 +297,22 @@ class FullyConnectedNet(object):
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
         loss, dscores = softmax_loss(scores, y)
+        loss += L2reg
+        
+        dscores, grads['W'+str(N)], grads['b'+str(N)] = affine_backward(dscores, cache.pop())
+        grads['W' + str(N)] += self.reg * self.params['W'+str(N)]
+        
         for i in reversed(range(1, self.num_layers)):
-            dscores, grads['W'+str(i)], grads['b'+str(i)] = affine_relu_backward(dscores, cache[i])
+            if self.use_dropout:
+                dscores = dropout_backward(dscores, cache.pop())
+
+            if self.normalization=='batchnorm' or self.normalization=='layernorm':
+                dscores,grads['W'+str(i)], grads['b'+str(i)],grads['gamma'+str(i)],grads['beta'+str(i)] = affine_bn_relu_backward(dscores,self.normalization,cache.pop())
+            else:
+                dscores, grads['W'+str(i)], grads['b'+str(i)] = affine_relu_backward(dscores, cache.pop())
             loss += 0.5 * self.reg * np.sum(self.params['W'+str(i)]*self.params['W'+str(i)])
             grads['W' + str(i)] += self.reg * self.params['W'+str(i)]
+            
             
         ############################################################################
         #                             END OF YOUR CODE                             #
