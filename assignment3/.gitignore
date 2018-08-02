@@ -1,0 +1,9 @@
+*.swp
+*.pyc
+.env/*
+
+# gitignore the built release.
+assignment3/*
+cs231n/datasets/coco_captioning/*
+cs231n/datasets/*.npz
+cs231n/datasets/squeezenet*
