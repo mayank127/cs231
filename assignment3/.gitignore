@@ -7,3 +7,4 @@ assignment3/*
 cs231n/datasets/coco_captioning/*
 cs231n/datasets/*.npz
 cs231n/datasets/squeezenet*
+cs231n/datasets/MNIST_data/
